@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: trevian_oar
+      POSTGRES_USER: trevian
+      POSTGRES_PASSWORD: trevian2026
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./scripts/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    ports:
+      - "5434:5432"
+
+  app:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
+        NEXT_PUBLIC_APP_URL: https://trevianoar.trevorduke.com
+    restart: unless-stopped
+    ports:
+      - "4075:3000"
+    environment:
+      DATABASE_URL: postgresql://trevian:trevian2026@db:5432/trevian_oar
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY}
+      SENDGRID_FROM: noreply@trevorduke.com
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: mailto:trevor@trevorduke.com
+      JWT_SECRET: ${JWT_SECRET}
+      NEXT_PUBLIC_APP_URL: https://trevianoar.trevorduke.com
+    depends_on:
+      - db
+
+volumes:
+  pgdata:
