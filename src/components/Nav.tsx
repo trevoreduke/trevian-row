@@ -10,12 +10,22 @@ const tabs = [
 ];
 
 const adminTabs = [
+  { href: "/lineup", label: "Lineup", icon: "⚡" },
   { href: "/admin", label: "Admin", icon: "⚙️" },
+];
+
+const coxswainTabs = [
+  { href: "/lineup", label: "Lineup", icon: "⚡" },
 ];
 
 export default function Nav({ user }: { user: User }) {
   const pathname = usePathname();
-  const allTabs = user.role === "coach" ? [...tabs, ...adminTabs] : tabs;
+  const allTabs =
+    user.role === "coach"
+      ? [...tabs, ...adminTabs]
+      : user.role === "coxswain"
+      ? [...tabs, ...coxswainTabs]
+      : tabs;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 safe-bottom">
