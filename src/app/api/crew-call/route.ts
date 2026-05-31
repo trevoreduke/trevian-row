@@ -24,10 +24,13 @@ export async function POST(req: NextRequest) {
   }
   const boatName = boatRes.rows[0].name;
 
+  // Single source of truth so the DB row and the push body always match.
+  const callMessage = message || `${boatName} — get to the dock!`;
+
   // Save the crew call
   await pool.query(
     "INSERT INTO crew_calls (boat_id, sender_id, message) VALUES ($1, $2, $3)",
-    [boat_id, user.id, message || `${boatName} — get to the dock!`]
+    [boat_id, user.id, callMessage]
   );
 
   // Get all members of this boat with push subscriptions
@@ -37,22 +40,36 @@ export async function POST(req: NextRequest) {
     WHERE bm.boat_id = $1 AND u.push_subscription IS NOT NULL
   `, [boat_id]);
 
-  // Send push to each member
-  let sent = 0;
-  for (const member of members) {
-    const result = await sendPush(member.push_subscription, {
-      title: `🚣 ${boatName}`,
-      body: message || `${boatName} — get to the dock NOW!`,
-      tag: `crew-call-${boat_id}`,
-    });
-    if (result.expired) {
-      await pool.query("UPDATE users SET push_subscription = NULL WHERE id = $1", [member.id]);
-    } else {
-      sent++;
-    }
-  }
+  // Fan out in parallel; one failed recipient must not abort the rest.
+  const results = await Promise.allSettled(
+    members.map(async (member) => {
+      const result = await sendPush(member.push_subscription, {
+        title: `🚣 ${boatName}`,
+        body: callMessage,
+        tag: `crew-call-${boat_id}`,
+      });
+      if (result.expired) {
+        await pool.query("UPDATE users SET push_subscription = NULL WHERE id = $1", [member.id]);
+        return "expired" as const;
+      }
+      return "sent" as const;
+    })
+  );
 
-  return NextResponse.json({ ok: true, sent, total: members.length });
+  let sent = 0;
+  let expired = 0;
+  let failed = 0;
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled") {
+      if (r.value === "sent") sent++;
+      else expired++;
+    } else {
+      failed++;
+      console.error(`crew-call push failed for user ${members[i].id}:`, r.reason);
+    }
+  });
+
+  return NextResponse.json({ ok: true, sent, expired, failed, total: members.length });
 }
 
 export async function GET() {
